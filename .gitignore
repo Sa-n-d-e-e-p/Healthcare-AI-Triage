@@ -1,0 +1,30 @@
+# Security & Environment
+.env
+*.env
+!.env.example
+
+# Operating System
+.DS_Store
+Thumbs.db
+
+# Build Artifacts & Dependencies
+**/target/
+**/*.jar
+**/*.war
+**/*.class
+**/node_modules/
+**/dist/
+**/build/
+
+# Python Cache
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.venv/
+**/venv/
+
+# IDE & Editor Config
+.idea/
+.vscode/
+*.iml
+*.log

@@ -1,0 +1,168 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: omni_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: healthcare
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d healthcare"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7-jammy
+    container_name: omni_mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: omni_auth_service
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/healthcare
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: app
+      JWT_SECRET: CHANGE_ME_SUPER_SECRET_256_BITS_MINIMUM_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: Admin@123
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  profile-service:
+    build:
+      context: ./profile-service
+      dockerfile: Dockerfile
+    container_name: omni_profile_service
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/healthcare
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: app
+      JWT_SECRET: CHANGE_ME_SUPER_SECRET_256_BITS_MINIMUM_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: omni_notification_service
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/healthcare
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: app
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  appointment-service:
+    build:
+      context: ./appointment-service
+      dockerfile: Dockerfile
+    container_name: omni_appointment_service
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/healthcare
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: app
+      JWT_SECRET: CHANGE_ME_SUPER_SECRET_256_BITS_MINIMUM_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      PROFILE_SERVICE_URL: http://profile-service:8083
+      NOTIFICATION_SERVICE_URL: http://notification-service:8084
+    depends_on:
+      postgres:
+        condition: service_healthy
+      profile-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+
+  ai-triage-service:
+    build:
+      context: ./ai-triage-service
+      dockerfile: Dockerfile
+    container_name: omni_ai_triage_service
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    environment:
+      PORT: "8085"
+      MONGO_URL: mongodb://mongodb:27017
+      DB_NAME: healthcare
+      JWT_SECRET: CHANGE_ME_SUPER_SECRET_256_BITS_MINIMUM_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    depends_on:
+      - mongodb
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: omni_gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8081
+      APPOINTMENT_SERVICE_URL: http://appointment-service:8082
+      PROFILE_SERVICE_URL: http://profile-service:8083
+      NOTIFICATION_SERVICE_URL: http://notification-service:8084
+      AI_SERVICE_URL: http://ai-triage-service:8085
+    depends_on:
+      - auth-service
+      - appointment-service
+      - profile-service
+      - notification-service
+      - ai-triage-service
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: omni_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - gateway
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: omni_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8088:80"
+    depends_on:
+      - postgres
+
+volumes:
+  pg_data:
+  mongo_data:
